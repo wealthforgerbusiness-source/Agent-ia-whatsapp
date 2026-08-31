@@ -160,11 +160,11 @@ func (w *WAManager) jid(numero string) types.JID {
 }
 
 func (w *WAManager) SendTyping(numero string) {
-	_ = w.client.SendChatPresence(w.jid(numero), types.ChatPresenceComposing, types.ChatPresenceMediaText)
+	_ = w.client.SendChatPresence(context.Background(), w.jid(numero), types.ChatPresenceComposing, types.ChatPresenceMediaText)
 }
 
 func (w *WAManager) StopTyping(numero string) {
-	_ = w.client.SendChatPresence(w.jid(numero), types.ChatPresencePaused, types.ChatPresenceMediaText)
+	_ = w.client.SendChatPresence(context.Background(), w.jid(numero), types.ChatPresencePaused, types.ChatPresenceMediaText)
 }
 
 func (w *WAManager) SendText(numero, text string) error {
