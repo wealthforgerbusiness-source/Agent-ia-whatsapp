@@ -24,12 +24,24 @@ func NewSheetsClient(cfg *Config) *SheetsClient {
 	}
 }
 
-type ConfigResponse struct {
-	OK                  bool   `json:"ok"`
-	BotActif            bool   `json:"bot_actif"`
-	DateDebutAbonnement string `json:"date_debut_abonnement"`
-	TokensInputTotal    int64  `json:"tokens_input_total"`
-	TokensOutputTotal   int64  `json:"tokens_output_total"`
+// Status reflète exactement ce que computeStatus_() renvoie côté Apps Script
+type Status struct {
+	OK                    bool   `json:"ok"`
+	BotActif              bool   `json:"bot_actif"`
+	BotOperationnel       bool   `json:"bot_operationnel"`
+	NumeroClient          string `json:"numero_client"`
+	DateDebutAbonnement   string `json:"date_debut_abonnement"`
+	DureeAbonnementJours  int    `json:"duree_abonnement_jours"`
+	JoursRestants         int    `json:"jours_restants"`
+	AbonnementExpire      bool   `json:"abonnement_expire"`
+	TokensInputTotal      int64  `json:"tokens_input_total"`
+	TokensOutputTotal     int64  `json:"tokens_output_total"`
+	TokensTotal           int64  `json:"tokens_total"`
+	TokensLimiteMensuelle int64  `json:"tokens_limite_mensuelle"`
+	TokensRestants        int64  `json:"tokens_restants"`
+	LimiteAtteinte        bool   `json:"limite_atteinte"`
+	SystemPrompt          string `json:"system_prompt"`
+	Blocked               bool   `json:"blocked"`
 }
 
 func (s *SheetsClient) get(action string, extraParams map[string]string) ([]byte, error) {
@@ -61,19 +73,23 @@ func (s *SheetsClient) post(payload map[string]interface{}) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
-func (s *SheetsClient) GetConfig() (*ConfigResponse, error) {
+func parseStatus_(raw []byte) (*Status, error) {
+	var status Status
+	if err := json.Unmarshal(raw, &status); err != nil {
+		return nil, fmt.Errorf("erreur parsing status: %s", string(raw))
+	}
+	if !status.OK {
+		return nil, fmt.Errorf("erreur reponse sheets: %s", string(raw))
+	}
+	return &status, nil
+}
+
+func (s *SheetsClient) GetStatus() (*Status, error) {
 	raw, err := s.get("config", nil)
 	if err != nil {
 		return nil, err
 	}
-	var cfg ConfigResponse
-	if err := json.Unmarshal(raw, &cfg); err != nil {
-		return nil, err
-	}
-	if !cfg.OK {
-		return nil, fmt.Errorf("erreur config: %s", string(raw))
-	}
-	return &cfg, nil
+	return parseStatus_(raw)
 }
 
 func (s *SheetsClient) CheckPassword(password string) (bool, error) {
@@ -90,17 +106,39 @@ func (s *SheetsClient) CheckPassword(password string) (bool, error) {
 	return res.OK, nil
 }
 
-func (s *SheetsClient) ToggleBot(actif bool) error {
-	_, err := s.post(map[string]interface{}{
+func (s *SheetsClient) ToggleBot(actif bool) (*Status, error) {
+	raw, err := s.post(map[string]interface{}{
 		"action": "toggle_bot",
 		"actif":  actif,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return parseStatus_(raw)
+}
+
+func (s *SheetsClient) ResetAbonnement() (*Status, error) {
+	raw, err := s.post(map[string]interface{}{
+		"action": "reset_abonnement",
+	})
+	if err != nil {
+		return nil, err
+	}
+	return parseStatus_(raw)
+}
+
+func (s *SheetsClient) SetNumeroClient(numero string) error {
+	_, err := s.post(map[string]interface{}{
+		"action": "set_numero_client",
+		"numero": numero,
 	})
 	return err
 }
 
-func (s *SheetsClient) ResetAbonnement() error {
+func (s *SheetsClient) SetSystemPrompt(prompt string) error {
 	_, err := s.post(map[string]interface{}{
-		"action": "reset_abonnement",
+		"action": "set_system_prompt",
+		"prompt": prompt,
 	})
 	return err
 }
@@ -115,7 +153,7 @@ func (s *SheetsClient) SaveMessage(numero, role, message string) error {
 	return err
 }
 
-func (s *SheetsClient) UpdateTokens(input, output int) (*ConfigResponse, error) {
+func (s *SheetsClient) UpdateTokens(input, output int) (*Status, error) {
 	raw, err := s.post(map[string]interface{}{
 		"action": "update_tokens",
 		"input":  input,
@@ -124,11 +162,7 @@ func (s *SheetsClient) UpdateTokens(input, output int) (*ConfigResponse, error) 
 	if err != nil {
 		return nil, err
 	}
-	var res ConfigResponse
-	if err := json.Unmarshal(raw, &res); err != nil {
-		return nil, err
-	}
-	return &res, nil
+	return parseStatus_(raw)
 }
 
 type RecentMessage struct {
@@ -145,8 +179,8 @@ func (s *SheetsClient) GetRecentBotMessages(numero string, limit int) ([]RecentM
 		return nil, err
 	}
 	var res struct {
-		OK       bool             `json:"ok"`
-		Messages []RecentMessage  `json:"messages"`
+		OK       bool            `json:"ok"`
+		Messages []RecentMessage `json:"messages"`
 	}
 	if err := json.Unmarshal(raw, &res); err != nil {
 		return nil, err
