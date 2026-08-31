@@ -3,8 +3,12 @@ FROM golang:1.22-bookworm AS builder
 WORKDIR /app
 
 COPY go.mod ./
-RUN go mod download 2>/dev/null || true
 COPY . .
+RUN go get go.mau.fi/whatsmeow@latest
+RUN go get google.golang.org/protobuf@latest
+RUN go get modernc.org/sqlite@latest
+RUN go get github.com/google/uuid@latest
+RUN go get github.com/skip2/go-qrcode@latest
 RUN go mod tidy
 RUN CGO_ENABLED=0 GOOS=linux go build -o agent .
 
